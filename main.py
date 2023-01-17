@@ -1,8 +1,8 @@
 import torch
 import argparse
 from torchvision import datasets
-from src.model import BayesLinear
-from src.utils import transform
+from src.model import BayesLinear, BayesDropout, BayesConv2d
+from src.utils import transform, augment_transform
 from src.variational_approximator import variational_approximator
 from src.train import train
 
@@ -11,7 +11,7 @@ def parsing():
     parser = argparse.ArgumentParser(description="training bayesian neural network for mnist dataset")
     
     # tag and result directory
-    parser.add_argument("--tag", type = str, default = "BNN")
+    parser.add_argument("--tag", type = str, default = "BNN", choices=["BNN", "BNN-CNN"])
     parser.add_argument("--save_dir", type = str, default = "./results")
 
     # gpu allocation
@@ -70,17 +70,56 @@ if __name__ =="__main__":
         def __init__(self, input_dim : int, output_dim : int):
             super().__init__()
             self.layer1 = BayesLinear(input_dim, 1024)
+            self.dropout1 = BayesDropout(p = 0.5)
             self.layer2 = BayesLinear(1024, 1024 // 2)
+            self.dropout2 = BayesDropout(p = 0.5)
             self.layer3 = BayesLinear(1024 // 2, output_dim)
             
         def forward(self, x : torch.Tensor):
             x= x.view(-1, 28 * 28)
             x = torch.nn.functional.relu(self.layer1(x))
+            x = self.dropout1(x)
             x = torch.nn.functional.relu(self.layer2(x))
+            x = self.dropout2(x)
+            x = self.layer3(x)
+            return x
+        
+    @variational_approximator
+    class BayesianConvNetwork(torch.nn.Module):
+        def __init__(self, output_dim : int):
+            super().__init__()
+            self.conv1 = BayesConv2d(1, 16, 3, 1, 0, 1, True, None)
+            self.max_pool1 = torch.nn.MaxPool2d(kernel_size = 2, stride = 2)
+            self.conv2 = BayesConv2d(16, 32, 3, 1, 0, 1, True, None)
+            self.max_pool2 = torch.nn.MaxPool2d(kernel_size = 2, stride = 2)
+            
+            self.linear_dim = 800
+            self.layer1 = BayesLinear(800, 1024)
+            self.dropout1 = BayesDropout(p = 0.5)
+            self.layer2 = BayesLinear(1024, 1024 // 2)
+            self.dropout2 = BayesDropout(p = 0.5)
+            self.layer3 = BayesLinear(1024 // 2, output_dim)
+            
+        def forward(self, x : torch.Tensor):
+            
+            x = torch.nn.functional.relu(self.conv1(x))
+            x = self.max_pool1(x)
+            x = torch.nn.functional.relu(self.conv2(x))
+            x = self.max_pool2(x)
+            x = x.view(x.size()[0], -1)
+            
+            x = torch.nn.functional.relu(self.layer1(x))
+            x = self.dropout1(x)
+            x = torch.nn.functional.relu(self.layer2(x))
+            x = self.dropout2(x)
             x = self.layer3(x)
             return x
     
-    model = BayesianNetwork(28 * 28, 10).to(device)        
+    if args['tag'] == "BNN":
+        model = BayesianNetwork(28 * 28, 10).to(device)      
+    elif args['tag'] == "BNN-CNN":
+        model = BayesianConvNetwork(10).to(device)  
+    
     optimizer = torch.optim.AdamW(model.parameters(), lr = 1e-3)
     loss_fn = torch.nn.CrossEntropyLoss(reduction = 'sum')
     

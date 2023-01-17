@@ -146,6 +146,7 @@ def train(
     best_epoch = 0
     best_acc = 0
     best_f1 = 0
+    best_loss = 0
 
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
@@ -186,7 +187,7 @@ def train(
                 ))
 
         # save the best parameters
-        if valid_acc > valid_acc:
+        if valid_acc > best_acc:
             best_loss = valid_loss
             best_acc = valid_acc
             best_f1 = valid_f1
